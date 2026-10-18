@@ -1,0 +1,572 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Laboratorio del Cubo</title><meta name="description" content="Matematica e informatica con un cubo di Rubik: riduzione, algoritmi, invarianti, commutatori, numero di Dio e un simulatore in Python."><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: quaderno a quadretti (chiaro) / lavagna (scuro); ogni idea = testo a sinistra, cubo vivo a destra */
+:root{
+  --bg:#f5f8fc; --grid:#dde6f1; --panel:#ffffff; --ink:#1b2742; --muted:#58647d;
+  --pen:#2443c4; --red:#cc3434; --line:#cdd8e6; --chip:#eaf0fa;
+  --f-display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#152320; --grid:#1e302b; --panel:#1b2b27; --ink:#e8efe9; --muted:#9db2a8;
+  --pen:#8ec0ff; --red:#ff8f7a; --line:#2c423b; --chip:#233631; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#152320; --grid:#1e302b; --panel:#1b2b27; --ink:#e8efe9; --muted:#9db2a8;
+  --pen:#8ec0ff; --red:#ff8f7a; --line:#2c423b; --chip:#233631; color-scheme:dark}
+*{box-sizing:border-box}
+body{
+  background:var(--bg);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:24px 24px; color:var(--ink); font:16px/1.6 var(--f-body);
+}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:grid;gap:12px;margin-bottom:40px}
+h1{font:800 clamp(2.2rem,6vw,4rem)/1 var(--f-display);margin:0;letter-spacing:-.02em;text-wrap:balance}
+h1 span{color:var(--pen)}
+.lede{max-width:62ch;color:var(--muted);margin:0;font-size:1.08rem}
+.hint{font:500 .8rem var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+section{display:grid;grid-template-columns:1fr minmax(0,1.05fr);gap:32px;padding-block:44px;border-top:2px dashed var(--line);align-items:start}
+@media (max-width:860px){section{grid-template-columns:1fr;gap:20px}}
+.txt{min-width:0;display:grid;gap:14px;max-width:60ch}
+.num{font:800 1rem var(--f-mono);color:var(--red)}
+h2{font:800 clamp(1.5rem,3.2vw,2.1rem)/1.1 var(--f-display);margin:0;text-wrap:balance}
+p{margin:0}
+.note{border-left:3px solid var(--pen);padding:8px 14px;background:color-mix(in srgb,var(--panel) 75%,transparent);border-radius:0 6px 6px 0}
+.note b{font-family:var(--f-mono);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--pen);display:block}
+.stage{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;box-shadow:0 1px 0 var(--line)}
+canvas{width:100%;aspect-ratio:1/1;max-width:440px;justify-self:center;display:block;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ctr{justify-content:center}
+button{font:700 .9rem var(--f-body);color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--pen)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--pen);outline-offset:2px}
+button.on,button.primary{background:var(--pen);color:var(--panel);border-color:var(--pen)}
+.mv{font-family:var(--f-mono);min-width:44px}
+code,.mono{font-family:var(--f-mono)}
+.chip{font:700 .85rem var(--f-mono);padding:4px 9px;border-radius:6px;background:var(--chip);border:1px solid var(--line);transition:background .2s,color .2s}
+.chip.now{background:var(--red);color:var(--panel);border-color:var(--red)}
+.big{font:800 2.6rem/1 var(--f-display);font-variant-numeric:tabular-nums;color:var(--pen)}
+.status{font-weight:700;min-height:1.6em;text-align:center}
+.lbl{font:500 .75rem var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+/* catena di riduzione */
+.chain{display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap}
+.chain figure{margin:0;display:grid;justify-items:center;gap:2px}
+.chain canvas{width:76px;max-width:76px;cursor:grab}
+.chain figcaption{font:700 .85rem var(--f-mono)}
+.arrow{display:grid;justify-items:center;font:500 .7rem var(--f-mono);color:var(--red)}
+.arrow i{font-style:normal;font-size:1.4rem;line-height:1}
+.dots{display:flex;gap:6px;justify-content:center}
+.dots span{width:9px;height:9px;border-radius:50%;background:var(--line)}
+.dots span.on{background:var(--red)}
+/* doppio cubo */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pair>div{min-width:0;display:grid;gap:4px;justify-items:center;text-align:center}
+.pair canvas{max-width:260px}
+.par{font:700 .82rem var(--f-mono)}
+.par em{font-style:normal;padding:1px 6px;border-radius:4px;background:var(--chip)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{font:500 .72rem var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+td.r{text-align:right;font-weight:700}
+.reveal{cursor:pointer;color:var(--pen);text-decoration:underline dotted}
+input[type=range]{width:100%;accent-color:var(--pen)}
+/* scala logaritmica */
+.scale{display:grid;gap:10px}
+.bar{display:grid;gap:3px}
+.bar .t{display:flex;justify-content:space-between;gap:8px;font-size:.88rem}
+.bar .t b{font-variant-numeric:tabular-nums;font-family:var(--f-mono);font-size:.8rem;white-space:nowrap}
+.track{height:12px;background:var(--chip);border-radius:6px;overflow:hidden}
+.fill{height:100%;background:var(--pen);border-radius:6px;width:0;transition:width 1.4s cubic-bezier(.2,.8,.2,1)}
+.fill.red{background:var(--red)}
+.axis{display:flex;justify-content:space-between;font:500 .7rem var(--f-mono);color:var(--muted)}
+.counter{font:800 clamp(1.05rem,3.4vw,1.5rem)/1.2 var(--f-display);font-variant-numeric:tabular-nums;word-break:break-all;color:var(--pen)}
+/* dati */
+.faces{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+@media (max-width:520px){.faces{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.face{display:grid;gap:2px;justify-items:center}
+.face .g{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;width:100%;max-width:64px}
+.face .g i{aspect-ratio:1;border-radius:3px;font:700 .62rem/1 var(--f-mono);display:grid;place-items:center;font-style:normal;color:#1b1b1b;border:1px solid rgba(0,0,0,.25)}
+pre{margin:0;max-height:340px;overflow:auto;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:12px;font:500 .78rem/1.5 var(--f-mono)}
+.hist{font:500 .8rem var(--f-mono);color:var(--muted);min-height:1.5em;overflow-wrap:anywhere}
+footer a{color:var(--pen)}
+footer{border-top:2px dashed var(--line);padding-top:20px;color:var(--muted);font-size:.9rem}
+@media (prefers-reduced-motion: reduce){.fill{transition:none}}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="hint">Matematica e informatica con un cubo di Rubik</span>
+  <h1>Laboratorio <span>del Cubo</span></h1>
+  <p class="lede">Sei idee grandi, ognuna con un cubo vivo da guardare e girare. I cubi si trascinano con il dito o il mouse. Tutti i numeri della pagina vengono calcolati da un vero simulatore, non scritti a mano.</p>
+</header>
+
+<!-- 1 -->
+<section id="riduzione">
+  <div class="txt">
+    <span class="num">1 · Ridurre</span>
+    <h2>Un problema nuovo diventa uno già risolto</h2>
+    <p>Il 4×4 sembra un altro gioco. Ma se prima si accoppiano i centri e poi gli spigoli, ogni gruppo di adesivi si comporta come un solo pezzo: il 4×4 diventa un 3×3 con i pezzi “grassi”. Da lì si usa ciò che si sa già.</p>
+    <p>Matematici e programmatori lavorano così: non risolvono da zero, riportano il problema a uno noto.</p>
+    <div class="note"><b>Sul quaderno</b>Disegna la catena 5×5 → 4×4 → 3×3 → 2×2 con una freccia per ogni riduzione. Vale anche per i compiti: un’equazione nuova spesso si trasforma in una che sai già fare.</div>
+  </div>
+  <div class="stage">
+    <div class="chain" aria-label="Catena di riduzione 5x5, 4x4, 3x3, 2x2">
+      <figure><canvas class="mini" data-n="5" aria-label="Cubo 5x5"></canvas><figcaption>5×5</figcaption></figure>
+      <span class="arrow"><i>→</i>riduci</span>
+      <figure><canvas class="mini" data-n="4" aria-label="Cubo 4x4"></canvas><figcaption>4×4</figcaption></figure>
+      <span class="arrow"><i>→</i>riduci</span>
+      <figure><canvas class="mini" data-n="3" aria-label="Cubo 3x3"></canvas><figcaption>3×3</figcaption></figure>
+      <span class="arrow"><i>→</i>angoli</span>
+      <figure><canvas class="mini" data-n="2" aria-label="Cubo 2x2"></canvas><figcaption>2×2</figcaption></figure>
+    </div>
+    <canvas id="c1" aria-label="Animazione: un 4x4 ridotto a 3x3"></canvas>
+    <div class="status" id="s1">Mescolato</div>
+    <div class="dots" id="d1"></div>
+    <div class="row ctr">
+      <button id="b1p" class="mv" aria-label="Fase precedente">‹</button>
+      <button id="b1a" class="on">Pausa</button>
+      <button id="b1n" class="mv" aria-label="Fase successiva">›</button>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="algoritmi">
+  <div class="txt">
+    <span class="num">2 · Programmi</span>
+    <h2>Un algoritmo è un programma</h2>
+    <p><code>R U R' U'</code> è codice: istruzioni precise eseguite in ordine. Chi gira il cubo fa il computer. Stesso cubo di partenza e stesse mosse danno sempre lo stesso risultato.</p>
+    <p>Ripetendo una sequenza abbastanza volte, il cubo torna risolto. Quel numero di ripetizioni è il <b>periodo</b> della sequenza.</p>
+    <div class="note"><b>Esperimento</b>Ripetete <code>R U</code> contando ad alta voce. Poi <code>R U R' U'</code>. Prima di guardare la tabella, provate a indovinare.</div>
+    <table aria-label="Periodi calcolati dal simulatore">
+      <thead><tr><th>Sequenza</th><th style="text-align:right">Periodo</th></tr></thead>
+      <tbody id="tper"></tbody>
+    </table>
+  </div>
+  <div class="stage">
+    <div class="row ctr" role="group" aria-label="Scegli la sequenza">
+      <button class="seq on" data-seq="R U">R U</button>
+      <button class="seq" data-seq="R U R' U'">R U R' U'</button>
+      <button class="seq" data-seq="R U2">R U2</button>
+    </div>
+    <canvas id="c2" aria-label="Cubo che ripete una sequenza"></canvas>
+    <div class="row ctr" style="gap:18px">
+      <div style="text-align:center"><div class="lbl">Ripetizioni</div><div class="big" id="reps">0</div></div>
+      <div style="text-align:center"><div class="lbl">Mosse</div><div class="big" id="moves" style="color:var(--muted)">0</div></div>
+    </div>
+    <div class="status" id="s2">Premi Avvia e contate insieme.</div>
+    <div class="row ctr">
+      <button id="b2go" class="primary">Avvia</button>
+      <button id="b2stop">Ferma</button>
+      <label class="lbl" for="spd" style="flex:1 1 140px">Velocità<input type="range" id="spd" min="1" max="40" value="10"></label>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="invarianti">
+  <div class="txt">
+    <span class="num">3 · Invarianti</span>
+    <h2>Le cose impossibili</h2>
+    <p>Smontate un 3×3 e rimontatelo con un solo spigolo girato. Non si risolverà mai, con nessun algoritmo.</p>
+    <p>Il motivo è un <b>invariante</b>: con una regola fissa si contano gli spigoli “girati”. Ogni mossa ne gira 0 oppure 4, mai uno solo. Il numero cambia, ma se parte pari resta pari, se parte dispari resta dispari. Partendo dispari, non si arriva mai a zero.</p>
+    <p>Sul 4×4, dopo la riduzione, può capitare proprio questo: un solo spigolo doppio girato, situazione impossibile su un 3×3. È la “parità” del 4×4, e per sistemarla serve un algoritmo speciale che gira anche gli strati interni.</p>
+    <div class="note"><b>Guardate qui</b>I due cubi ricevono le stesse mosse, poi le stesse mosse al contrario. Il primo torna risolto. Il secondo torna con lo spigolo girato, ogni volta.</div>
+  </div>
+  <div class="stage">
+    <div class="pair">
+      <div><span class="lbl">Cubo normale</span><canvas id="c3a" aria-label="Cubo normale"></canvas><span class="par">girati: <em id="pa">0</em> · <span id="pa2">pari</span></span></div>
+      <div><span class="lbl">1 spigolo girato</span><canvas id="c3b" aria-label="Cubo con uno spigolo girato"></canvas><span class="par">girati: <em id="pb">1</em> · <span id="pb2">dispari</span></span></div>
+    </div>
+    <div class="status" id="s3">Pronto</div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section id="commutatori">
+  <div class="txt">
+    <span class="num">4 · Commutatori</span>
+    <h2>Fai, sistema, disfa</h2>
+    <p>Un commutatore ha la forma <code>A B A' B'</code>: fai A, fai B, disfa A, disfa B. Quasi tutto torna al suo posto e si muovono solo pochi pezzi. Molti algoritmi nascono proprio così.</p>
+    <p>Qui <code>A = R' D' R</code> e <code>B = U'</code>. Su 20 pezzi mobili se ne spostano 3, segnati con un bollino.</p>
+    <div class="note"><b>Con i post-it</b>Su un cubo risolto attaccate un post-it ai 3 pezzi segnati. Eseguite la sequenza: i 3 post-it si scambiano di posto, tutto il resto resta fermo.</div>
+  </div>
+  <div class="stage">
+    <div class="row ctr" id="chips4"></div>
+    <canvas id="c4" aria-label="Commutatore sul cubo"></canvas>
+    <div class="status" id="s4">Premi Esegui</div>
+    <div class="row ctr"><button id="b4" class="primary">Esegui</button><button id="b4r">Ripeti sullo stesso cubo</button></div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="numeri">
+  <div class="txt">
+    <span class="num">5 · La scala dei numeri</span>
+    <h2>Miliardi di miliardi, e solo 20 mosse</h2>
+    <p>Il 2×2 ha circa 3,7 milioni di stati. Il 3×3 circa 43 miliardi di miliardi. Controllandone uno al secondo dal Big Bang a oggi, ne avreste visto appena l’1%.</p>
+    <p>Eppure ogni 3×3 si risolve in <b>al massimo 20 mosse</b> (contando anche una mezza rotazione come una mossa). È il “numero di Dio”, dimostrato nel luglio 2010 da Rokicki, Kociemba, Davidson e Dethridge con circa 35 anni di calcolo di un processore, donati da Google e svolti in poche settimane.</p>
+    <div class="note"><b>Prova a contare</b>Con il cursore scegli n. Le sequenze di n mosse sono poche rispetto agli stati: per questo servono almeno 17 mosse per alcune posizioni. Il minimo vero è 20.</div>
+  </div>
+  <div class="stage">
+    <div class="pair">
+      <div><span class="lbl">2×2</span><canvas id="c5a" aria-label="Cubo 2x2"></canvas><div class="counter" id="n2">0</div></div>
+      <div><span class="lbl">3×3</span><canvas id="c5b" aria-label="Cubo 3x3"></canvas><div class="counter" id="n3">0</div></div>
+    </div>
+    <div class="scale" id="logscale">
+      <span class="lbl">Ordini di grandezza (scala logaritmica)</span>
+      <div class="bar"><div class="t"><span>Stati del 2×2</span><b>≈ 10<sup>6,6</sup></b></div><div class="track"><div class="fill" data-w="6.565"></div></div></div>
+      <div class="bar"><div class="t"><span>Persone sulla Terra</span><b>≈ 10<sup>9,9</sup></b></div><div class="track"><div class="fill" data-w="9.9"></div></div></div>
+      <div class="bar"><div class="t"><span>Secondi dal Big Bang</span><b>≈ 10<sup>17,6</sup></b></div><div class="track"><div class="fill" data-w="17.64"></div></div></div>
+      <div class="bar"><div class="t"><span>Stati del 3×3</span><b>≈ 10<sup>19,6</sup></b></div><div class="track"><div class="fill red" data-w="19.636"></div></div></div>
+      <div class="axis"><span>10⁰</span><span>10⁵</span><span>10¹⁰</span><span>10¹⁵</span><span>10²⁰</span></div>
+    </div>
+    <div class="scale">
+      <label class="lbl" for="nm">Sequenze lunghe al massimo <b id="nmv" class="mono">16</b> mosse</label>
+      <input type="range" id="nm" min="1" max="20" value="16">
+      <div class="track"><div class="fill" id="cov" style="transition:width .3s"></div></div>
+      <p id="covt" style="font-size:.92rem"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section id="simulatore">
+  <div class="txt">
+    <span class="num">6 · Simulazione</span>
+    <h2>Il cubo diventa un dato</h2>
+    <p>Per un computer il cubo è un elenco di 54 adesivi, ognuno con posizione e colore. Una mossa è una <b>funzione</b>: prende un cubo e restituisce un cubo nuovo. Qui sotto vedi i dati cambiare a ogni mossa.</p>
+    <p>Il programma Python a fianco è completo e funziona. Calcola anche i periodi della sezione 2. In Scratch: una lista di 54 elementi e un blocco personalizzato per ogni mossa.</p>
+    <pre id="py" aria-label="Codice Python del simulatore"><code>"""cubo.py - un cubo di Rubik 3x3 in poche righe.
+
+Il cubo e' un DATO: un dizionario (posizione, normale) -&gt; colore.
+Le mosse sono FUNZIONI: prendono un cubo e ne restituiscono uno nuovo.
+Stesso input, stesso output. Sempre.
+"""
+import random
+
+# normale della faccia -&gt; nome (e colore) della faccia
+FACCE = {(0, 1, 0): "U", (0, -1, 0): "D", (1, 0, 0): "R",
+         (-1, 0, 0): "L", (0, 0, 1): "F", (0, 0, -1): "B"}
+# faccia -&gt; (asse, verso): x=0, y=1, z=2
+ASSE = {"U": (1, 1), "D": (1, -1), "R": (0, 1),
+        "L": (0, -1), "F": (2, 1), "B": (2, -1)}
+
+
+def risolto():
+    cubo = {}
+    for n, faccia in FACCE.items():
+        i = n.index(1) if 1 in n else n.index(-1)
+        for a in (-1, 0, 1):
+            for b in (-1, 0, 1):
+                p = [a, b]
+                p.insert(i, n[i])          # il pezzo sta sulla faccia n
+                cubo[(tuple(p), n)] = faccia
+    return cubo
+
+
+def ruota90(v, i):
+    """Rotazione di +90 gradi attorno all'asse i (regola della mano destra)."""
+    x, y, z = v
+    return ((x, -z, y), (z, y, -x), (-y, x, z))[i]
+
+
+def mossa(cubo, m):
+    """Applica una mossa (es. "R", "U'", "F2") e restituisce un nuovo cubo."""
+    i, verso = ASSE[m[0]]
+    giri = 3 if verso == 1 else 1          # orario visto dalla faccia
+    if m.endswith("'"):
+        giri = 4 - giri
+    elif m.endswith("2"):
+        giri = 2
+    nuovo = {}
+    for (p, n), colore in cubo.items():
+        if p[i] == verso:                  # il pezzo e' nello strato che gira
+            for _ in range(giri):
+                p, n = ruota90(p, i), ruota90(n, i)
+        nuovo[(p, n)] = colore
+    return nuovo
+
+
+def esegui(cubo, sequenza):
+    for m in sequenza.split():
+        cubo = mossa(cubo, m)
+    return cubo
+
+
+def e_risolto(cubo):
+    return all(FACCE[n] == colore for (p, n), colore in cubo.items())
+
+
+def periodo(sequenza):
+    """Quante volte ripetere la sequenza prima di tornare al cubo risolto."""
+    cubo, volte = esegui(risolto(), sequenza), 1
+    while not e_risolto(cubo):
+        cubo, volte = esegui(cubo, sequenza), volte + 1
+    return volte
+
+
+def mescola(n=20):
+    mosse, ultima = [], ""
+    while len(mosse) &lt; n:
+        f = random.choice("UDRLFB")
+        if f != ultima:
+            mosse.append(f + random.choice(["", "'", "2"]))
+            ultima = f
+    return " ".join(mosse)
+
+
+if __name__ == "__main__":
+    for s in ["R", "R U", "R U R' U'", "R U2"]:
+        print(f"{s:10} -&gt; periodo {periodo(s)}")
+    m = mescola()
+    c = esegui(risolto(), m)
+    print("mescolato:", m, "| risolto?", e_risolto(c))
+</code></pre>
+    <div class="row"><button id="cp">Copia il codice</button><span class="lbl" id="cpm"></span></div>
+  </div>
+  <div class="stage">
+    <canvas id="c6" aria-label="Simulatore del cubo"></canvas>
+    <div class="row ctr" id="mvbtns"></div>
+    <div class="row ctr"><button id="b6s" class="primary">Mescola</button><button id="b6u">Annulla</button><button id="b6r">Reset</button></div>
+    <div class="hist" id="hist">Nessuna mossa.</div>
+    <span class="lbl">Il dato: le 6 facce</span>
+    <div class="faces" id="faces"></div>
+    <div class="status" id="s6"></div>
+  </div>
+</section>
+
+<footer><p>Notazione: U su, D giù, R destra, L sinistra, F fronte, B retro. Una lettera sola = un quarto di giro in senso orario guardando quella faccia; l’apostrofo = antiorario; il 2 = mezzo giro.</p><p style="margin-top:10px">Fonti: <a href="https://cube20.org/">cube20.org</a> (numero di Dio, 43.252.003.274.489.856.000 stati) · <a href="https://jaapsch.net/puzzles/cube2.htm">Jaap’s Puzzle Page</a> (3.674.160 stati del 2×2) · <a href="https://www.sfu.ca/~jtmulhol/permutationpuzzles/puzzles-rc-cubology.html">Teorema fondamentale della cubologia, SFU</a> (spigolo girato) · <a href="https://www.speedsolving.com/wiki/index.php/4x4x4_Parity_Algorithms">Speedsolving wiki</a> (parità del 4×4) · <a href="https://planck.ipac.caltech.edu/news/planck13-001">Planck</a> (età dell’universo, 13,8 miliardi di anni). Periodi, pezzi mossi e conteggi sono calcolati dal simulatore della pagina.</p></footer>
+</div>
+
+<script>
+/*ENGINE*/
+const FACES={U:[1,1],D:[1,-1],R:[0,1],L:[0,-1],F:[2,1],B:[2,-1]};
+const FKEYS=Object.keys(FACES);
+function faceOf(n){for(const f of FKEYS){const[i,s]=FACES[f];if(n[i]===s)return f}return null}
+function rot90(v,i){const[x,y,z]=v;return i===0?[x,-z,y]:i===1?[z,y,-x]:[-y,x,z]}
+function makeCube(N){const h=(N-1)/2,cubies=[];for(let a=0;a<N;a++)for(let b=0;b<N;b++)for(let c=0;c<N;c++){const p=[a-h,b-h,c-h],st=[];for(const f of FKEYS){const[i,s]=FACES[f];if(p[i]===s*h){const n=[0,0,0];n[i]=s;st.push({n,c:f})}}if(st.length||(N===3&&!p[0]&&!p[1]&&!p[2]))cubies.push({p,st})}return{N,h,cubies}}
+function tokInfo(tok){const[i,s]=FACES[tok[0]];const m=tok.slice(1);const base=s===1?3:1;const t=m==="'"?4-base:m==="2"?2:base;return{i,s,t,ang:(t===3?-1:t)*Math.PI/2}}
+function applyMove(cube,tok){const k=tokInfo(tok);for(const cb of cube.cubies){if(cb.p[k.i]*k.s>cube.h-0.5){for(let r=0;r<k.t;r++){cb.p=rot90(cb.p,k.i);for(const s of cb.st)s.n=rot90(s.n,k.i)}}}}
+function parse(seq){return seq.trim().split(/\s+/).filter(Boolean)}
+function invTok(t){return t.endsWith("2")?t:t.endsWith("'")?t[0]:t+"'"}
+function invert(toks){return toks.slice().reverse().map(invTok)}
+function isSolved(cube){return cube.cubies.every(cb=>cb.st.every(s=>faceOf(s.n)===s.c))}
+function period(seq,limit=2000){const c=makeCube(3),t=parse(seq);for(let k=1;k<=limit;k++){for(const m of t)applyMove(c,m);if(isSolved(c))return k}return -1}
+function eoCount(cube){let n=0;for(const cb of cube.cubies){if(cb.st.length!==2)continue;const pos=cb.st.find(s=>s.n[1]!==0)||cb.st.find(s=>s.n[2]!==0);const col=cb.st.find(s=>s.c==='U'||s.c==='D')||cb.st.find(s=>s.c==='F'||s.c==='B');if(pos!==col)n++}return n}
+function key(p){return p.map(v=>v+0).join(',')}
+function snapshot(cube){const m=new Map();for(const cb of cube.cubies)m.set(key(cb.p),cb.st.map(s=>s.n.map(v=>v+0).join('')+s.c).sort().join('|'));return m}
+function scramble(n,rnd=Math.random){const out=[],mods=['',"'",'2'];let last='';while(out.length<n){const f=FKEYS[Math.floor(rnd()*6)];if(f===last)continue;last=f;out.push(f+mods[Math.floor(rnd()*3)])}return out}
+
+/* ---------- rendering ---------- */
+const COL={U:'#f2f3ef',D:'#ffd21f',F:'#13a35b',B:'#1f5fd8',R:'#d7262f',L:'#ff8a1c'};
+const BODY=[20,21,26];
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rgbc={};function rgb(h){h=COL[h]||h;return rgbc[h]||(rgbc[h]=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)))}
+function frot(v,i,t){const c=Math.cos(t),s=Math.sin(t),[x,y,z]=v;return i===0?[x,y*c-z*s,y*s+z*c]:i===1?[x*c+z*s,y,-x*s+z*c]:[x*c-y*s,x*s+y*c,z]}
+const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const LIGHT=(()=>{const l=[-.35,.6,.72],m=Math.hypot(...l);return l.map(v=>v/m)})();
+const VIEWS=[];
+const io=new IntersectionObserver(es=>{for(const e of es){const v=VIEWS.find(v=>v.canvas===e.target);if(v){v.visible=e.isIntersecting;v.dirty=true}}});
+const ro=new ResizeObserver(es=>{for(const e of es){const v=VIEWS.find(v=>v.canvas===e.target);if(v)v.dirty=true}});
+class View{
+  constructor(canvas,cube,o={}){
+    Object.assign(this,{canvas,cube,yaw:-.62,pitch:.5,ms:260,queue:[],cur:null,marks:new Set(),fade:1,fadeMs:700,auto:0,dirty:true,visible:false,busy:false},o);
+    if(RM)this.auto=0;
+    this.ctx=canvas.getContext('2d');VIEWS.push(this);io.observe(canvas);ro.observe(canvas);
+    let d=null;
+    canvas.addEventListener('pointerdown',e=>{d={x:e.clientX,y:e.clientY,a:this.auto};this.auto=0;canvas.setPointerCapture(e.pointerId)});
+    canvas.addEventListener('pointermove',e=>{if(!d)return;this.yaw+=(e.clientX-d.x)*.012;this.pitch=Math.max(-1.45,Math.min(1.45,this.pitch+(e.clientY-d.y)*.012));d.x=e.clientX;d.y=e.clientY;this.dirty=true});
+    const up=()=>{if(d){this.auto=d.a;d=null}};canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+  }
+  enqueue(a){this.queue.push(...a);this.busy=true}
+  clear(){this.queue=[];this.cur=null;this.busy=false}
+  tick(dt){
+    if(this.auto){this.yaw+=this.auto*dt/1000;this.dirty=true}
+    if(this.fade<1){this.fade=Math.min(1,this.fade+dt/this.fadeMs);this.dirty=true}
+    let g=0;
+    while(!this.cur&&this.queue.length&&g++<100){
+      const t=this.queue.shift();
+      if(t[0]==='#'){this.onTag&&this.onTag(t.slice(1));this.dirty=true;continue}
+      if(t[0]==='~'){this.cur={wait:+t.slice(1),t:0};break}
+      this.cur={tok:t,info:tokInfo(t),t:0};
+    }
+    if(this.cur){
+      const c=this.cur;c.t+=dt;const dur=c.wait!=null?c.wait:this.ms;
+      if(c.t>=dur){this.cur=null;if(c.tok){applyMove(this.cube,c.tok);this.onMove&&this.onMove(c.tok)}}
+      this.dirty=true;
+    }
+    if(this.busy&&!this.cur&&!this.queue.length){this.busy=false;this.onIdle&&this.onIdle()}
+  }
+  draw(){
+    const cv=this.canvas,dpr=Math.min(2,devicePixelRatio||1),W=cv.clientWidth,H=cv.clientHeight;if(!W||!H)return;
+    const pw=Math.round(W*dpr),ph=Math.round(H*dpr);if(cv.width!==pw||cv.height!==ph){cv.width=pw;cv.height=ph}
+    const ctx=this.ctx;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+    const cube=this.cube,sc=Math.min(W,H)/(cube.N*1.8),cx=W/2,cy=H/2;
+    const cur=this.cur&&this.cur.tok?this.cur:null;
+    const ang=cur?cur.info.ang*ease(Math.min(1,cur.t/Math.max(1,this.ms))):0;
+    const yaw=this.yaw,pit=this.pitch,V=v=>frot(frot(v,1,yaw),0,pit);
+    const Q=[];
+    for(const cb of cube.cubies){
+      const mv=cur&&cb.p[cur.info.i]*cur.info.s>cube.h-.5;
+      const R=mv?v=>frot(v,cur.info.i,ang):v=>v;
+      for(let i=0;i<3;i++)for(const s of[1,-1]){
+        const n=[0,0,0];n[i]=s;const wn=V(R(n));if(wn[2]<=.001)continue;
+        const j=(i+1)%3,k=(i+2)%3,c=[cb.p[0]+n[0]*.5,cb.p[1]+n[1]*.5,cb.p[2]+n[2]*.5];
+        const pts=[[.5,.5],[.5,-.5],[-.5,-.5],[-.5,.5]].map(([a,b])=>{const q=c.slice();q[j]+=a;q[k]+=b;return V(R(q))});
+        Q.push({pts,cc:V(R(c)),wn,st:cb.st.find(x=>x.n[i]===s),mark:this.marks.has(cb)});
+      }
+    }
+    Q.sort((a,b)=>a.cc[2]-b.cc[2]);
+    const P=q=>[cx+q[0]*sc,cy-q[1]*sc];
+    const poly=(pts,fill)=>{ctx.beginPath();pts.forEach((q,ix)=>{const[x,y]=P(q);ix?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=fill;ctx.stroke()};
+    ctx.lineJoin='round';
+    for(const q of Q){
+      const l=.62+.38*Math.max(0,q.wn[0]*LIGHT[0]+q.wn[1]*LIGHT[1]+q.wn[2]*LIGHT[2]);
+      ctx.lineWidth=1;poly(q.pts,`rgb(${BODY[0]*l|0},${BODY[1]*l|0},${BODY[2]*l|0})`);
+      if(!q.st)continue;
+      let c=rgb(q.st.c);
+      if(this.fade<1&&q.st.from){const a=rgb(q.st.from),f=ease(this.fade);c=c.map((v,ix)=>a[ix]+(v-a[ix])*f)}
+      const inner=q.pts.map(p=>p.map((v,ix)=>q.cc[ix]+(v-q.cc[ix])*.8));
+      ctx.lineWidth=Math.max(1,sc*.09);poly(inner,`rgb(${c[0]*l|0},${c[1]*l|0},${c[2]*l|0})`);
+      if(q.mark){const[x,y]=P(q.cc),r=sc*.2;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle='#111';ctx.fill();ctx.lineWidth=Math.max(1.5,sc*.06);ctx.strokeStyle='#fff';ctx.stroke()}
+    }
+  }
+}
+let last=performance.now();
+function loop(now){const dt=Math.min(80,now-last);last=now;for(const v of VIEWS){if(!v.visible)continue;v.tick(dt);if(v.dirty){v.dirty=false;v.draw()}}requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+const $=id=>document.getElementById(id);
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+/* ---------- 1. riduzione ---------- */
+document.querySelectorAll('canvas.mini').forEach(cv=>{const n=+cv.dataset.n;new View(cv,makeCube(n),{auto:.35,yaw:-.62+n*.4})});
+(()=>{
+  const rnd=mulberry(7),pick=()=>FKEYS[Math.floor(rnd()*6)];
+  const c4=makeCube(4),c3=makeCube(3),v=new View($('c1'),c4,{fadeMs:900});
+  for(const cube of[c4,c3])for(const cb of cube.cubies)for(const st of cb.st)st.face=st.c;
+  const loc=(st,p,h)=>{const i=st.n.findIndex(x=>x!==0);return[p[(i+1)%3]+h,p[(i+2)%3]+h]};
+  const M=[0,1,1,2],virt={},scr=new Map();
+  for(const cb of c4.cubies)for(const st of cb.st)scr.set(st,pick());
+  for(const f of FKEYS)for(let a=0;a<3;a++)for(let b=0;b<3;b++)virt[f+a+b]=(a===1&&b===1)?f:pick();
+  for(const cb of c4.cubies)for(const st of cb.st){const[a,b]=loc(st,cb.p,1.5);if((a===0||a===3)&&(b===0||b===3))virt[st.face+M[a]+M[b]]=scr.get(st)}
+  function colorFor(stage,st,p,N){
+    const[a,b]=loc(st,p,(N-1)/2),f=st.face;
+    if(stage===4)return f;
+    if(N===3)return virt[f+a+b];
+    const cen=(a===1||a===2)&&(b===1||b===2),cor=(a===0||a===3)&&(b===0||b===3);
+    if(stage===0)return scr.get(st);
+    if(stage===1)return cen?f:scr.get(st);
+    return cen?f:cor?scr.get(st):virt[f+M[a]+M[b]];
+  }
+  const TXT=['Mescolato: adesivi sparsi ovunque','1. Centri accoppiati: ogni faccia ha il suo centro','2. Spigoli accoppiati: gli adesivi viaggiano a coppie','3. Ora è un 3×3: si risolve con ciò che sai già','4. Risolto!'];
+  let stage=0,timer=null,playing=!RM;
+  const dots=$('d1');TXT.forEach(()=>dots.appendChild(document.createElement('span')));
+  function show(s){
+    stage=(s+TXT.length)%TXT.length;
+    const cube=stage>=3?c3:c4,same=cube===v.cube;
+    for(const cb of cube.cubies)for(const st of cb.st){const col=colorFor(stage,st,cb.p,cube.N);st.from=same?st.c:col;st.c=col}
+    v.cube=cube;v.fade=0;v.dirty=true;
+    $('s1').textContent=TXT[stage];[...dots.children].forEach((d,i)=>d.classList.toggle('on',i===stage));
+  }
+  function sched(){clearTimeout(timer);if(playing)timer=setTimeout(()=>{show(stage+1);sched()},stage===0||stage===3?2800:2100)}
+  $('b1n').onclick=()=>{show(stage+1);sched()};$('b1p').onclick=()=>{show(stage-1);sched()};
+  const lab=()=>{$('b1a').textContent=playing?'Pausa':'Riproduci';$('b1a').classList.toggle('on',playing)};
+  $('b1a').onclick=()=>{playing=!playing;lab();sched()};
+  lab();show(0);sched();
+})();
+
+/* ---------- 2. periodi ---------- */
+(()=>{
+  const list=["R","R U","R U R' U'","R U2","R U'","R2 U2","F R"];
+  $('tper').innerHTML=list.map(s=>`<tr><td><code>${s}</code></td><td class="r"><span class="reveal" tabindex="0" role="button" data-p="${period(s)}">mostra</span></td></tr>`).join('');
+  $('tper').addEventListener('click',e=>{const t=e.target.closest('.reveal');if(t){t.textContent=t.dataset.p;t.classList.remove('reveal')}});
+  $('tper').addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.classList.contains('reveal')){e.preventDefault();e.target.click()}});
+  const v=new View($('c2'),makeCube(3));
+  let seq=parse("R U"),reps=0,moves=0,run=false;
+  const spd=()=>1000/(+$('spd').value*1.2);
+  v.ms=spd();$('spd').oninput=()=>{v.ms=RM?0:spd()};
+  function reset(){v.clear();v.cube=makeCube(3);reps=0;moves=0;$('reps').textContent=0;$('moves').textContent=0;v.dirty=true}
+  v.onMove=()=>{moves++;$('moves').textContent=moves};
+  v.onIdle=()=>{if(!run)return;reps++;$('reps').textContent=reps;
+    if(isSolved(v.cube)){run=false;$('s2').textContent=`Tornato risolto dopo ${reps} ripetizioni di ${seq.join(' ')}.`;return}
+    v.enqueue(seq)};
+  $('b2go').onclick=()=>{reset();run=true;$('s2').textContent=`Eseguo ${seq.join(' ')}… contate!`;v.enqueue(seq)};
+  $('b2stop').onclick=()=>{run=false;v.clear();$('s2').textContent=`Fermato a ${reps} ripetizioni.`};
+  document.querySelectorAll('.seq').forEach(b=>b.onclick=()=>{document.querySelectorAll('.seq').forEach(x=>x.classList.toggle('on',x===b));seq=parse(b.dataset.seq);run=false;reset();$('s2').textContent='Premi Avvia e contate insieme.'});
+})();
+
+/* ---------- 3. invarianti ---------- */
+(()=>{
+  const A=new View($('c3a'),makeCube(3),{ms:RM?0:170}),B=new View($('c3b'),makeCube(3),{ms:RM?0:170});
+  const e=B.cube.cubies.find(cb=>key(cb.p)==='0,1,1');const t=e.st[0].c;e.st[0].c=e.st[1].c;e.st[1].c=t;
+  const upd=()=>{const a=eoCount(A.cube),b=eoCount(B.cube);$('pa').textContent=a;$('pb').textContent=b;$('pa2').textContent=a%2?'dispari':'pari';$('pb2').textContent=b%2?'dispari':'pari'};
+  A.onMove=upd;B.onMove=upd;
+  A.onTag=tg=>{if(tg==='mix'){B.marks.clear();$('s3').textContent='Mescolo con mosse a caso…'}
+    if(tg==='undo')$('s3').textContent='Ora le stesse mosse al contrario…';
+    if(tg==='done'){B.marks.add(e);$('s3').textContent='Sinistra risolto. Destra: lo spigolo è ancora girato.'}};
+  function cycle(){const s=scramble(14),seq=['#mix',...s,'~900','#undo',...invert(s),'#done','~3200'];A.enqueue(seq);B.enqueue(seq.filter(x=>x[0]!=='#'))}
+  A.onIdle=cycle;B.marks.add(e);upd();
+  setTimeout(cycle,1200);
+})();
+
+/* ---------- 4. commutatore ---------- */
+(()=>{
+  const Aseq=parse("R' D' R"),Bseq=parse("U'");
+  const parts=[['A',Aseq],['B',Bseq],["A'",invert(Aseq)],["B'",invert(Bseq)]];
+  $('chips4').innerHTML=parts.map(([n,s],i)=>`<span class="chip" id="ch${i}">${n} = ${s.join(' ')}</span>`).join('');
+  const v=new View($('c4'),makeCube(3),{ms:RM?0:420});let snap=null;
+  v.onTag=tg=>{
+    if(tg[0]==='p'){const i=+tg[1];parts.forEach((_,k)=>$('ch'+k).classList.toggle('now',k===i));$('s4').textContent=['Fai A','Fai B','Disfa A','Disfa B'][i]}
+    if(tg==='end'){parts.forEach((_,k)=>$('ch'+k).classList.remove('now'));const now=snapshot(v.cube);v.marks.clear();
+      for(const cb of v.cube.cubies)if(snap.get(key(cb.p))!==now.get(key(cb.p)))v.marks.add(cb);
+      $('s4').textContent=`Si sono mossi ${v.marks.size} pezzi su 20. Tutti gli altri sono al loro posto.`}};
+  function go(reset){v.clear();if(reset)v.cube=makeCube(3);v.marks.clear();snap=snapshot(v.cube);
+    v.enqueue(parts.flatMap(([,s],i)=>['#p'+i,...s,'~250']).concat(['#end']))}
+  $('b4').onclick=()=>go(true);$('b4r').onclick=()=>go(false);
+  new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){o.disconnect();setTimeout(()=>go(true),500)}},{threshold:.5}).observe($('c4'));
+})();
+
+/* ---------- 5. numeri ---------- */
+(()=>{
+  new View($('c5a'),makeCube(2),{auto:.4});new View($('c5b'),makeCube(3),{auto:.4});
+  const T2=3674160n,T3=43252003274489856000n,fmt=b=>b.toLocaleString('it-IT');
+  function count(el,T,ms){const L=T.toString().length-1+Math.log10(+('0.'+T.toString().slice(0,15))*10);let t0=null;
+    const st=n=>{if(t0===null)t0=n;const f=Math.min(1,(n-t0)/ms);el.textContent=f<1?fmt(BigInt(Math.floor(10**(L*ease(f))))):fmt(T);if(f<1)requestAnimationFrame(st)};
+    RM?el.textContent=fmt(T):requestAnimationFrame(st)}
+  new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){o.disconnect();count($('n2'),T2,1600);count($('n3'),T3,3200);
+    document.querySelectorAll('#logscale .fill').forEach(f=>f.style.width=(+f.dataset.w/20*100)+'%')}},{threshold:.3}).observe($('numeri'));
+  function upd(){const n=BigInt(+$('nm').value);$('nmv').textContent=n;
+    const S=1n+18n*(15n**n-1n)/14n,pct=S>=T3?100:Number(S*100000n/T3)/1000;
+    $('cov').style.width=Math.max(.6,pct)+'%';$('cov').classList.toggle('red',S>=T3);
+    const ps=pct<0.001?'meno dello 0,001':pct.toLocaleString('it-IT',{maximumFractionDigits:pct<1?3:1});$('covt').innerHTML=S<T3?`Al massimo <b class="mono">${fmt(S)}</b> sequenze diverse: coprono al più il <b>${ps}%</b> degli stati. Qualche posizione resta fuori: con ${n} mosse non sempre basta.`
+      :n<20n?`Ora le sequenze (${fmt(S)}) superano gli stati: il conteggio non esclude più nulla. Ma il computer ha dimostrato che il vero limite è più alto: <b>20</b>.`
+      :`<b>20 mosse: il numero di Dio.</b> Dimostrato nel luglio 2010: ogni posizione del 3×3 si risolve in al massimo 20 mosse, e alcune ne richiedono proprio 20.`}
+  $('nm').oninput=upd;upd();
+})();
+
+/* ---------- 6. simulatore ---------- */
+(()=>{
+  const v=new View($('c6'),makeCube(3),{ms:RM?0:200});const hist=[];
+  const ORDER=[['U',[1,0,0],[0,0,1]],['L',[0,0,1],[0,-1,0]],['F',[1,0,0],[0,-1,0]],['R',[0,0,-1],[0,-1,0]],['B',[-1,0,0],[0,-1,0]],['D',[1,0,0],[0,0,-1]]];
+  function faces(){const m=new Map();for(const cb of v.cube.cubies)for(const st of cb.st)m.set(key(cb.p)+'|'+st.n.map(x=>x+0).join(','),st.c);
+    $('faces').innerHTML=ORDER.map(([f,r,d])=>{const[i,s]=FACES[f],cells=[];for(let y=-1;y<=1;y++)for(let x=-1;x<=1;x++){const p=[0,0,0];p[i]=s;for(let a=0;a<3;a++)p[a]+=r[a]*x+d[a]*y;const n=[0,0,0];n[i]=s;const c=m.get(key(p)+'|'+n.join(','));cells.push(`<i style="background:${COL[c]}">${c}</i>`)}
+      return`<div class="face"><span class="lbl">${f}</span><div class="g">${cells.join('')}</div></div>`}).join('');
+    $('s6').textContent=isSolved(v.cube)?'Stato: risolto':'Stato: mescolato'}
+  v.onMove=faces;
+  const showH=()=>{$('hist').textContent=hist.length?hist.join(' '):'Nessuna mossa.'};
+  const box=$('mvbtns');for(const f of"UDRLFB")for(const m of['',"'"]){const b=document.createElement('button');b.className='mv';b.textContent=f+m;b.onclick=()=>{hist.push(f+m);showH();v.enqueue([f+m])};box.appendChild(b)}
+  $('b6s').onclick=()=>{const s=scramble(20);hist.push(...s);showH();const ms=v.ms;v.ms=RM?0:70;v.enqueue([...s]);v.onIdle=()=>{v.ms=ms;v.onIdle=null}};
+  $('b6u').onclick=()=>{if(hist.length){const t=hist.pop();showH();v.enqueue(invert([t]))}};
+  $('b6r').onclick=()=>{v.clear();v.ms=RM?0:200;v.onIdle=null;v.cube=makeCube(3);hist.length=0;showH();faces();v.dirty=true};
+  faces();
+  $('cp').onclick=()=>{const txt=$('py').innerText;navigator.clipboard.writeText(txt).then(()=>$('cpm').textContent='Copiato',()=>{const r=document.createRange();r.selectNodeContents($('py'));const s=getSelection();s.removeAllRanges();s.addRange(r);$('cpm').textContent='Selezionato: premi Ctrl+C'})};
+})();
+</script>
+
+</body></html>
